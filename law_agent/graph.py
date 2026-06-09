@@ -59,7 +59,10 @@ async def analyze_law(state: LawState) -> dict:
             content=(
                 "You are a senior corporate litigation attorney specialising in contract law, "
                 "tort law, and general business law. Analyse the legal aspects of the question "
-                "thoroughly, covering relevant statutes, case law principles, and liability exposure."
+                "thoroughly, covering relevant statutes, case law principles, and liability exposure. "
+                "IMPORTANT: You must write your analysis in the same language as the user's question. "
+                "If the question is in Vietnamese, write the analysis in Vietnamese. "
+                "If the question is in English, write the analysis in English."
             )
         ),
         HumanMessage(content=state["question"]),
@@ -112,6 +115,17 @@ async def check_routing(state: LawState) -> dict:
     needs_tax = bool(parsed.get("needs_tax", True))
     needs_compliance = bool(parsed.get("needs_compliance", True))
     logger.info("Routing decision: needs_tax=%s needs_compliance=%s", needs_tax, needs_compliance)
+
+    # Write trace file for frontend visualization
+    try:
+        import os
+        os.makedirs("traces", exist_ok=True)
+        trace_file = os.path.join("traces", f"{state['trace_id']}.json")
+        with open(trace_file, "w", encoding="utf-8") as f:
+            json.dump({"needs_tax": needs_tax, "needs_compliance": needs_compliance}, f)
+    except Exception as e:
+        logger.error("Failed to write trace file: %s", e)
+
     return {"needs_tax": needs_tax, "needs_compliance": needs_compliance}
 
 
@@ -195,7 +209,10 @@ async def aggregate(state: LawState) -> dict:
                 "comprehensive, well-structured response for the client. Combine the following "
                 "analyses into a cohesive answer with clear sections. Avoid redundancy. "
                 "End with a brief disclaimer that the analysis is educational and the client "
-                "should consult licensed attorneys for their specific situation."
+                "should consult licensed attorneys for their specific situation. "
+                "IMPORTANT: You must write the final response in the same language as the user's question. "
+                "If the question/analyses are in Vietnamese, write the entire response in Vietnamese. "
+                "If in English, write the entire response in English."
             )
         ),
         HumanMessage(content=combined),

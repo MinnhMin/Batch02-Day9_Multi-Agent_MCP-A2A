@@ -34,6 +34,10 @@ When answering, be precise about:
 
 Always note that your response is for educational purposes and the user
 should consult a licensed attorney for specific compliance advice.
+
+IMPORTANT: You must write your entire response in the same language as the user's question.
+If the question is in Vietnamese, write the response in Vietnamese.
+If the question is in English, write the response in English.
 """
 
 

@@ -92,6 +92,90 @@ async def main() -> None:
     )
     app = app_builder.build()
 
+    from fastapi.responses import HTMLResponse, JSONResponse
+    from fastapi import Body
+    from uuid import uuid4
+    from langchain_core.messages import HumanMessage, AIMessage
+    from customer_agent.graph import build_graph
+
+    @app.get("/", response_class=HTMLResponse)
+    async def get_index():
+        import os
+        html_path = os.path.join(os.path.dirname(__file__), "index.html")
+        with open(html_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content)
+
+    @app.post("/api/chat")
+    async def chat_api(payload: dict = Body(...)):
+        question = payload.get("question", "")
+        trace_id = payload.get("trace_id", str(uuid4()))
+        context_id = str(uuid4())
+        
+        # Build the Customer Agent graph
+        graph = build_graph(trace_id=trace_id, context_id=context_id, depth=0)
+        
+        # Invoke the graph
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content=question)]},
+            config={"configurable": {"thread_id": context_id}}
+        )
+        
+        # Extract the last AIMessage content
+        answer = ""
+        for msg in reversed(result.get("messages", [])):
+            if hasattr(msg, "content") and msg.content:
+                if not isinstance(msg, HumanMessage):
+                    if isinstance(msg, AIMessage):
+                        answer = msg.content
+                        break
+        if not answer:
+            for msg in reversed(result.get("messages", [])):
+                content = getattr(msg, "content", "")
+                if content and not isinstance(msg, HumanMessage):
+                    answer = content
+                    break
+        if not answer:
+            answer = "I was unable to process your legal question at this time."
+            
+        # Get routing decisions for the response
+        needs_tax = True
+        needs_compliance = True
+        try:
+            import os
+            import json
+            trace_file = os.path.join("traces", f"{trace_id}.json")
+            if os.path.exists(trace_file):
+                with open(trace_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                needs_tax = data.get("needs_tax", True)
+                needs_compliance = data.get("needs_compliance", True)
+                os.remove(trace_file)
+        except Exception:
+            pass
+            
+        return JSONResponse(content={
+            "response": answer, 
+            "trace_id": trace_id,
+            "needs_tax": needs_tax,
+            "needs_compliance": needs_compliance
+        })
+
+    @app.get("/api/trace/{trace_id}")
+    async def get_trace(trace_id: str):
+        import os
+        import json
+        trace_file = os.path.join("traces", f"{trace_id}.json")
+        if os.path.exists(trace_file):
+            try:
+                with open(trace_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return JSONResponse(content={"status": "routing_decided", **data})
+            except Exception as e:
+                return JSONResponse(content={"status": "error", "message": str(e)})
+        else:
+            return JSONResponse(content={"status": "routing_undecided"})
+
     config = uvicorn.Config(app, host="0.0.0.0", port=PORT, log_level="info")
     server = uvicorn.Server(config)
     logger.info("Customer Agent listening on port %d", PORT)
